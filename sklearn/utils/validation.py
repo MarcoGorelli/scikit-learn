@@ -2317,8 +2317,7 @@ def _get_feature_names(X):
         Feature names of `X`. Unrecognized array containers will return `None`.
     """
     feature_names = None
-
-    X = nw.from_native(X, strict=False, eager_only=True)
+    X = nw.from_native(X, strict=False, eager_only=True, allow_series=True)
     if isinstance(X, nw.DataFrame):
         feature_names = np.asarray(X.columns, dtype=object)
 
