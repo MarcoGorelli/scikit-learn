@@ -4,7 +4,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import numbers
-import warnings
 
 import narwhals as nw
 import numpy as np
@@ -277,16 +276,10 @@ def permutation_importance(
     >>> result.importances_std
     array([0.2211..., 0.       , 0.       ])
     """
-
     try:
         X = nw.from_native(X, eager_only=True)
-        if any(not isinstance(c, str) for c in X.columns):
-            warnings.warn(
-                "Columns will be renamed to strings for permutation_importance."
-            )
-            X = X.rename({i: str(i) for i in X.columns})
     except TypeError:
-        X = check_array(X, force_all_finite="allow-nan", dtype=None)
+        X = check_array(X, ensure_all_finite="allow-nan", dtype=None)
 
     # Precompute random seed from the random state to be used
     # to get a fresh independent RandomState instance for each
