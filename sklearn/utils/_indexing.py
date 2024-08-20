@@ -15,8 +15,6 @@ from ._param_validation import Interval, validate_params
 from .extmath import _approximate_mode
 from .validation import (
     _is_arraylike_not_scalar,
-    _is_pandas_df,
-    _is_polars_df_or_series,
     _use_interchange_protocol,
     check_array,
     check_consistent_length,
@@ -85,6 +83,36 @@ def _polars_indexing(X, key, key_dtype, axis):
     # DataFrame (axis=0)
     X_indexed = X[key]
     if np.isscalar(key) and len(X.shape) == 2:
+        # `X_indexed` is a DataFrame with a single row; we return a Series to be
+        # consistent with pandas
+        pl = sys.modules["polars"]
+        return pl.Series(X_indexed.row(0))
+    return X_indexed
+
+
+def _narwhals_indexing(X, key, key_dtype, axis):
+    """Indexing X with polars interchange protocol."""
+    # Polars behavior is more consistent with lists
+    if isinstance(key, np.ndarray):
+        # Convert each element of the array to a Python scalar
+        key = key.tolist()
+    elif not (np.isscalar(key) or isinstance(key, slice)):
+        key = list(key)
+
+    if axis == 1:
+        # Here we are certain to have a polars DataFrame; which can be indexed with
+        # integer and string scalar, and list of integer, string and boolean
+        return X[:, key]
+
+    if key_dtype == "bool":
+        # Boolean mask can be indexed in the same way for Series and DataFrame (axis=0)
+        return X.filter(key)
+
+    # Integer scalar and list of integer can be indexed in the same way for Series and
+    # DataFrame (axis=0)
+    X_indexed = X[key]
+    if np.isscalar(key) and len(X.shape) == 2:
+        breakpoint()
         # `X_indexed` is a DataFrame with a single row; we return a Series to be
         # consistent with pandas
         pl = sys.modules["polars"]
@@ -251,21 +279,15 @@ def _safe_indexing(X, indices, *, axis=0):
             "Got {} instead with {} dimension(s).".format(type(X), len(X.shape))
         )
 
-    if (
-        axis == 1
-        and indices_dtype == "str"
-        and not (_is_pandas_df(X) or _use_interchange_protocol(X))
-    ):
+    import narwhals as nw
+
+    X = nw.from_native(X, eager_only=True, strict=False)
+    if axis == 1 and indices_dtype == "str" and not isinstance(X, nw.DataFrame):
         raise ValueError(
             "Specifying the columns using strings is only supported for dataframes."
         )
-
-    if hasattr(X, "iloc"):
-        # TODO: we should probably use _is_pandas_df_or_series(X) instead but this
-        # would require updating some tests such as test_train_test_split_mock_pandas.
-        return _pandas_indexing(X, indices, indices_dtype, axis=axis)
-    elif _is_polars_df_or_series(X):
-        return _polars_indexing(X, indices, indices_dtype, axis=axis)
+    if isinstance(X, (nw.DataFrame, nw.Series)):
+        return _narwhals_indexing(X, indices, indices_dtype, axis=axis)
     elif hasattr(X, "shape"):
         return _array_indexing(X, indices, indices_dtype, axis=axis)
     else:
